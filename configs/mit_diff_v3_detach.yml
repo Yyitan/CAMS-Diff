@@ -1,0 +1,57 @@
+model:
+  model_name: CAMS
+  prompt_template:
+  - a photo of x x
+  - a photo of x
+  - a photo of x
+  ctx_init:
+  - 'a photo of '
+  - 'a photo of '
+  - 'a photo of '
+  clip_model: ./pretrained/ViT-L-14.pt
+  num_units: 32
+  m_layers: 8
+  adapter_dim: 128
+train:
+  dataset: mit-states
+  step_size: 5
+  gamma: 0.5
+  lr: 0.0001
+  train_batch_size: 64
+  epochs: 15
+  context_length: 8
+  seed: 0
+  val_metric: AUC
+  save_final_model: true
+  save_path: output/mit_diff_v3_detach
+  att_loss_weight: 0.5
+  obj_loss_weight: 0.5
+  com_loss_weight: 1
+  glb_loss_weight: 1
+test:
+  open_world: true
+  eval_batch_size: 64
+  feasibility: feasibilities/feasibility_mit.pt
+  threshold: 0.3625205941
+  threshold_trials: 50
+  beta: 0.85
+  load_model: output/mit/final_model.pt
+diffusion:
+  use_diffusion: true
+  sd_model_path: ./pretrained/stable-diffusion-2-1
+  lambda_diff: 0.05
+  diffusion_warmup_epochs: 3
+  diffusion_objective: energy_ce
+  diffusion_energy_temperature: 0.05
+  diffusion_condition_mode: attr_obj
+  diffusion_num_condition_tokens: 8
+  diffusion_condition_hidden_dim: 2048
+  diffusion_condition_dropout: 0.0
+  diffusion_batch_size: 4
+  diffusion_image_size: 512
+  diffusion_dtype: fp16
+  use_diffusion_rank_loss: true
+  diffusion_negative_mode: both
+  diffusion_rank_weight: 0.1
+  diffusion_rank_margin: 0.05
+  diffusion_detach_features: true

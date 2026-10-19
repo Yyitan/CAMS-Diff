@@ -1,0 +1,60 @@
+--- a/model/cams.py
++++ b/model/cams.py
+@@ -2,8 +2,10 @@
+ from torch import nn
+ from clip_modules import clip
+ import torch.nn.functional as F
++from collections import OrderedDict
+ from model.csp import CSPInterface
+ from clip_modules.text_encoder import CustomTextEncoder
++from model.diffusion_feedback import DiffusionFeedback
+ 
+ """"
+     CAMS: Towards Compositional Zero-Shot Learning via Gated Cross-Attention and Multi-Space Disentanglement 
+@@ -27,6 +29,31 @@
+                                          for attr, obj in self.dset.train_pairs])        
+ 
+         self.temp_logit = nn.Parameter(self.clip_model.logit_scale.exp().detach()) # Temperature
++        self.use_diffusion = bool(getattr(self.args, "use_diffusion", False))
++        self.current_epoch = 0
++        self.diffusion_warmup_epochs = int(getattr(self.args, "diffusion_warmup_epochs", 0))
++        if self.use_diffusion:
++            feature_dim = int(self.clip_model.text_projection.shape[1])
++            self.diffusion_feedback = DiffusionFeedback(self.args, feature_dim)
++
++    def set_epoch(self, epoch):
++        self.current_epoch = int(epoch)
++
++    def state_dict(self, *args, **kwargs):
++        state = super().state_dict(*args, **kwargs)
++        if not getattr(self, "use_diffusion", False):
++            return state
++        filtered = OrderedDict()
++        for key, value in state.items():
++            if key.startswith("diffusion_feedback.vae.") or key.startswith("diffusion_feedback.unet."):
++                continue
++            filtered[key] = value
++        return filtered
++
++    def load_state_dict(self, state_dict, strict=True, assign=False):
++        if getattr(self, "use_diffusion", False):
++            strict = False
++        return super().load_state_dict(state_dict, strict=strict, assign=assign)
+         
+     def forward(self, data):
+         img, att_id, obj_id , pair_id = data[0] , data[1], data[2] , data[3] 
+@@ -59,6 +86,14 @@
+                      self.args.com_loss_weight * com_loss + \
+                      self.args.glb_loss_weight * glb_loss
+ 
++        if self.use_diffusion and self.current_epoch >= self.diffusion_warmup_epochs:
++            diff_loss = self.diffusion_feedback(
++                img,
++                att_semantic_reps,
++                obj_semantic_reps,
++            )
++            total_loss = total_loss + self.diffusion_feedback.lambda_diff * diff_loss
++
+         return total_loss
+     
+     def get_text_features(self,token_com,token_att,token_obj):

@@ -1,0 +1,42 @@
+--- a/train.py
++++ b/train.py
+@@ -36,6 +36,7 @@
+ 
+ 
+ def train_model(model,scheduler,optimizer,args,train_dataset, val_dataset, test_dataset):
++    os.makedirs(args.save_path, exist_ok=True)
+     
+     train_loader = DataLoader(
+         train_dataset,
+@@ -52,6 +53,8 @@
+     
+     scaler = torch.amp.GradScaler(device,enabled=True)      
+     for epoch in range(args.epochs):
++        if hasattr(model, "set_epoch"):
++            model.set_epoch(epoch)
+         model.train()
+         progress_bar = tqdm.tqdm(
+             total=len(train_loader), desc="epoch % 3d" % (epoch + 1)
+@@ -67,7 +70,16 @@
+             scaler.update()
+ 
+             epoch_train_losses.append(loss.item())
+-            progress_bar.set_postfix({"train loss": np.mean(epoch_train_losses[-50:])})
++            postfix = {"train loss": np.mean(epoch_train_losses[-50:])}
++            diff_module = getattr(model, "diffusion_feedback", None)
++            if diff_module is not None and getattr(diff_module, "last_stats", None):
++                stats = diff_module.last_stats
++                postfix.update({
++                    "e_pos": round(stats.get("pos_energy", 0.0), 4),
++                    "e_neg": round(stats.get("neg_energy", 0.0), 4),
++                    "r_acc": round(stats.get("rank_acc", 0.0), 3),
++                })
++            progress_bar.set_postfix(postfix)
+             progress_bar.update()
+         scheduler.step()
+         
+@@ -130,4 +142,4 @@
+     model, optimizer = configure_model(args,train_dataset)
+     model.to(device)
+     scheduler = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
+-    train_model(model,scheduler,optimizer,args,train_dataset, val_dataset, test_dataset) +    train_model(model,scheduler,optimizer,args,train_dataset, val_dataset, test_dataset) 
